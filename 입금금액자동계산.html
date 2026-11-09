@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5cad">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="입금금액 계산">
+<link rel="manifest" href="manifest.webmanifest">
+<title>입금금액 복사하기</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Pretendard", "Malgun Gothic", sans-serif; background: #f3f5f8; color: #1d2433; font-size: 12px; }
+  .wrap { max-width: 520px; margin: 10px auto; padding: 0 12px; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .sub { font-size: 10px; color: #6b7385; margin-bottom: 8px; }
+  .card { background: #fff; border-radius: 8px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,.08); margin-bottom: 6px; }
+  label { display: block; font-size: 11px; font-weight: 600; margin: 0 0 2px; color: #4a5263; }
+  select, input { min-height: 40px; width: 100%; padding: 7px 8px; font-size: 12px; border: 1px solid #cfd5df; border-radius: 5px; background: #fff; }
+  .row { display: flex; gap: 6px; }
+  .row > div { flex: 1; min-width: 0; }
+  .row > div.kindBox { flex: 1.6; }
+  .calc { font-size: 11px; color: #4a5263; }
+  .total { font-size: 15px; font-weight: 700; color: #0b5cad; margin-top: 2px; }
+  .out { white-space: pre-wrap; font-family: inherit; font-size: 12px; background: #eef3fb; border: 1px dashed #9db8e0; border-radius: 5px; padding: 6px 8px; margin: 0 0 6px; }
+  button { min-height: 44px; width: 100%; padding: 9px; font-size: 13px; font-weight: 700; border: 0; border-radius: 6px; background: #0b5cad; color: #fff; cursor: pointer; }
+  button:active { background: #084a8c; }
+  .item-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; color: #0b5cad; margin-bottom: 3px; }
+  .del { width: auto; padding: 1px 6px; font-size: 10px; background: #e5e8ee; color: #4a5263; border-radius: 4px; }
+  .del:active { background: #d3d8e0; }
+  .sub-btn { background: #fff; color: #0b5cad; border: 1px dashed #0b5cad; margin-bottom: 6px; padding: 4px; font-size: 12px; }
+  .sub-btn:active { background: #eef3fb; }
+  .line { font-size: 10px; color: #6b7385; margin-top: 4px; }
+  @media (max-width: 340px) { .row { flex-wrap: wrap; } .row > div, .row > div.kindBox { flex: 1 1 45%; } }
+  .toast { text-align: center; font-size: 11px; color: #1a8a3a; height: 14px; margin-top: 3px; }
+
+@media (max-width: 520px) {
+  .wrap { margin: 12px auto; padding: 0 10px; }
+  .card { padding: 10px; margin-bottom: 8px; }
+  .out { font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+  .total { font-size: 18px; }
+}
+button, select, input { touch-action: manipulation; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>입금금액 복사하기</h1>
+  <div id="nojs" style="background:#fff4e5;border:1px solid #f0b46a;color:#8a4b00;border-radius:6px;padding:8px;font-size:12px;margin-bottom:6px;">
+    ⚠ 이 화면에서는 계산·규격 선택이 작동하지 않습니다.<br>
+    파일을 <b>크롬(Chrome)</b> 또는 <b>삼성 인터넷</b>으로 열어 주세요.
+  </div>
+  <div class="sub">수도권 레미콘 단가표 (2026-04-01자 · 서울·경기·인천 · VAT별도 원/㎥)</div>
+
+  <div class="card">
+    <label>할인율 % (100% 단가 기준 · 백원 미만 절사)</label>
+    <input id="rate" type="number" min="0" max="100" step="0.1" value="90" inputmode="decimal">
+  </div>
+
+  <div id="items"></div>
+  <button class="sub-btn" id="addBtn">＋ 규격 줄 추가</button>
+
+  <div class="card">
+    <label>입금계좌 (한 번 입력하면 저장됨)</label>
+    <input id="bank" type="text" placeholder="예: 신한은행 140-000-000000 (주)삼표산업">
+  </div>
+
+  <div class="card">
+    <div class="calc" id="calc"></div>
+    <div class="total" id="total"></div>
+  </div>
+
+  <div class="card">
+    <pre class="out" id="out"></pre>
+    <button id="copyBtn">📋 복사하기</button>
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script>
+// 단가표 100% 기준가 (삼표단가표_수도권_2025.xlsx «수도권_94% (2)» 시트)
+const PRICE = {
+  remicon: {
+    cols: [13.5, 15, 16, 18, 21, 24, 27, 30, 33, 35, 38, 40],   // 강도(MPa)
+    rows: {                                                        // 슬럼프(mm)
+      80:  [84560, 86330, 87840, 95880, 97800, 102230, 106020, 111390, 113940, 116260, 125000, 130840],
+      120: [85950, 87840, 89610, 97550, 100330, 105070, 109180, 114240, 116850, 119040, 127790, 133630],
+      150: [86830, 89230, 91130, 98540, 102380, 106970, 111710, 116920, 119590, 121430, 130430, 136430],
+      180: [87970, 90750, 92390, 100040, 103640, 109020, 114070, 119440, 122190, 123660, 133610, 140250],
+      210: [88980, 91510, 93410, 101530, 105700, 111230, 116760, 122140, 124940, 126470, 137950, 145610],
+    },
+  },
+  mortar: {
+    cols: ["1:1", "1:2", "1:3", "1:4", "1:5"],
+    rows: { "-": [167060, 139020, 122270, 109150, 100370] },
+  },
+  flow: {
+    cols: [27, 30, 33, 35, 40, 45, 49, 50, 55, 60],
+    rows: { "500~600": [119910, 124930, 127920, 129360, 148270, 154610, 158320, 160830, 164660, 168370] },
+  },
+};
+
+const $ = id => document.getElementById(id);
+const won = n => n.toLocaleString("ko-KR");
+let seq = 0;
+
+function addItem() {
+  const id = ++seq;
+  const div = document.createElement("div");
+  div.className = "card item";
+  div.innerHTML = `
+    <div class="item-head"><span class="no"></span><button class="del">삭제</button></div>
+    <div class="row">
+      <div class="kindBox"><label>구분</label>
+        <select class="kind">
+          <option value="remicon">레미콘</option>
+          <option value="mortar">몰탈</option>
+          <option value="flow">고강도</option>
+        </select></div>
+      <div><label class="lblStrength">강도</label><select class="strength"></select></div>
+      <div class="boxSlump"><label>슬럼프</label><select class="slump"></select></div>
+      <div><label>수량(㎥)</label><input class="qty" type="text" value="" inputmode="numeric" placeholder="숫자만"></div>
+    </div>
+    <div class="line"></div>`;
+  $("items").appendChild(div);
+  const q = c => div.querySelector(c);
+  q(".kind").addEventListener("change", () => fillSelects(div));
+  ["strength", "slump", "qty"].forEach(c => q("." + c).addEventListener("input", update));
+  q(".del").addEventListener("click", () => {
+    if ($("items").children.length > 1) { div.remove(); update(); }
+  });
+  fillSelects(div);
+}
+
+function fillSelects(div) {
+  const q = c => div.querySelector(c);
+  const k = q(".kind").value, t = PRICE[k];
+  q(".lblStrength").textContent = k === "mortar" ? "배합비" : "강도";
+  q(".strength").innerHTML = t.cols.map((c, i) => `<option value="${i}">${c}</option>`).join("");
+  q(".slump").innerHTML = Object.keys(t.rows).map(r => `<option>${r}</option>`).join("");
+  q(".boxSlump").style.display = k === "mortar" ? "none" : "";
+  if (k === "remicon") { q(".strength").value = 5; q(".slump").value = "150"; }  // 25-24-150 기본
+  update();
+}
+
+function readItem(div, rate) {
+  const q = c => div.querySelector(c);
+  const k = q(".kind").value, t = PRICE[k];
+  const s = t.cols[q(".strength").value], sl = q(".slump").value;
+  const spec = k === "remicon" ? `25-${s}-${sl}` : k === "mortar" ? `몰탈 ${s}` : `고강도 ${s}-${sl}`;
+  const base = t.rows[sl][q(".strength").value];
+  const qtyEl = q(".qty");
+  const digits = qtyEl.value.split(".")[0].replace(/\D/g, "");   // 소수점 아래 버리고 숫자만 남김
+  if (qtyEl.value !== digits) qtyEl.value = digits;
+  const qty = parseInt(qtyEl.value, 10) || 0;
+  const unit = Math.floor(base * rate / 100 / 100) * 100;   // 100% 단가 × 할인율, 백원 미만 절사
+  const amount = Math.round(unit * qty * 1.1);              // 부가세 포함
+  return { div, spec, base, qty, unit, amount };
+}
+
+function update() {
+  const rate = parseFloat($("rate").value) || 0;
+  const items = [...$("items").children].map(d => readItem(d, rate));
+  items.forEach((it, i) => {
+    it.div.querySelector(".no").textContent = `규격 ${i + 1}`;
+    it.div.querySelector(".del").style.visibility = items.length > 1 ? "" : "hidden";
+    it.div.querySelector(".line").innerHTML =
+      `기준단가 ${won(it.base)}원 × ${rate}% → <b>${won(it.unit)}원</b> · ${won(it.qty)}㎥ → <b>${won(it.amount)}원</b>(부가세포함)`;
+  });
+  const sumQty = items.reduce((a, b) => a + b.qty, 0);
+  const sumAmt = items.reduce((a, b) => a + b.amount, 0);
+
+  $("calc").textContent = `총 ${items.length}개 규격 · ${won(sumQty)}㎥`;
+  $("total").textContent = `입금금액 ${won(sumAmt)}원(부가세포함)`;
+
+  let lines;
+  if (items.length === 1) {
+    const it = items[0];
+    lines = [`${it.spec} ㎥ ${won(it.unit)}원`, `${won(it.qty)}㎥ ${won(it.amount)}원(부가세포함)입니다.`];
+  } else {
+    lines = items.flatMap(it => [`${it.spec} ㎥ ${won(it.unit)}원`, `${won(it.qty)}㎥ ${won(it.amount)}원(부가세포함)`]);
+    lines.push(`합계 ${won(sumQty)}㎥ ${won(sumAmt)}원(부가세포함)입니다.`);
+  }
+  const bank = $("bank").value.trim();
+  if (bank) lines.push(`입금계좌: ${bank}`);
+  $("out").textContent = lines.join("\n");
+}
+
+async function copy() {
+  const text = $("out").textContent;
+  const done = message => {
+    $("toast").textContent = message;
+    setTimeout(() => $("toast").textContent = "", 3000);
+  };
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      done("복사되었습니다 ✔ 카카오톡에 붙여넣으세요.");
+      return;
+    }
+  } catch (e) {}
+
+  // iPhone Safari 및 구형 브라우저용 대체 복사
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  ta.style.fontSize = "16px";
+  ta.style.left = "0";
+  ta.style.top = "0";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove();
+
+  if (ok) {
+    done("복사되었습니다 ✔ 카카오톡에 붙여넣으세요.");
+  } else {
+    const range = document.createRange();
+    range.selectNodeContents($("out"));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    done("자동 복사가 차단됐어요. 선택된 글자를 길게 눌러 복사해 주세요.");
+  }
+}
+
+$("rate").addEventListener("input", update);
+// 입금계좌는 현재 기기의 브라우저에 저장
+$("bank").value = localStorage.getItem("ipgeum.bank") || "";
+$("bank").addEventListener("input", () => { localStorage.setItem("ipgeum.bank", $("bank").value); update(); });
+$("addBtn").addEventListener("click", addItem);
+$("copyBtn").addEventListener("click", copy);
+$("nojs").remove();   // 스크립트가 도는 브라우저면 안내문을 지운다
+addItem();
+document.querySelector(".qty").value = 90;   // 예시값
+update();
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
